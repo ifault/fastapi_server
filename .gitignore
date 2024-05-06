@@ -1,2 +1,12 @@
 data
 logs
+.idea
+*/**pycache**
+*/**__pycache__
+*/**.pyc
+*/**.pyo
+*/**.pyd
+*/**.pyz
+*/**.pyw
+*/**.pyi
+*/**.pyj
