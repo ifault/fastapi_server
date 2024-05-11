@@ -32,7 +32,7 @@ class CreateUserData(BaseModel):
 class CreateAccountData(BaseModel):
     username: str
     password: str
-    token: str
+    user_id: str
     status: Optional[str] = "free"
 
 
@@ -40,3 +40,36 @@ class JsonResponseModel(BaseModel):
     success: bool
     message: str
     data: dict = {}
+
+
+class APIModel(BaseModel):
+    user_id: str
+
+
+class DeleteAccountData(APIModel):
+    uuid: Optional[str] = None
+    status: Optional[str] = None
+
+
+class ModifyAccountData(APIModel):
+    uuid: str
+    status: str
+
+
+class StopAccountData(APIModel):
+    uuid: str
+    task_id: str
+
+
+class AddAccountData(APIModel):
+    username: str
+    password: str
+
+
+class PaidData(APIModel):
+    uuid: str
+
+
+class MonitorData(APIModel):
+    uuid: str
+    email: Optional[str]

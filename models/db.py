@@ -21,6 +21,8 @@ class Accounts(Model):
     order = fields.TextField(null=True, default="")
     details = fields.TextField(null=True, default="")
     status = fields.TextField(default="free")
+    task_id = fields.TextField(null=True, default="")
+    order_time = fields.DatetimeField(null=True)
     user = fields.ForeignKeyField('models.Users', related_name='accounts')
 
 

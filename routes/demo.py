@@ -7,7 +7,6 @@ from common.service import create_access_token
 from models.db import Users, Accounts
 from models.model import SendMessageData, SendEmailData, JsonResponseModel, CreateUserData, CreateAccountData
 from tasks.morning import notify, send_email
-
 demo_router = APIRouter()
 
 
@@ -26,7 +25,6 @@ async def send_message(data: SendEmailData):
 @demo_router.post("/user")
 async def create_user(data: CreateUserData):
     access_token = create_access_token()
-    print(type(access_token))
     user = Users(username=data.username,
                  password=data.password,
                  access_token=str(access_token))
@@ -37,7 +35,7 @@ async def create_user(data: CreateUserData):
 
 @demo_router.post("/account")
 async def create_account(data: CreateAccountData):
-    user = await Users.filter(access_token=data.token).first()
+    user = await Users.filter(id=data.user_id).first()
     if user:
         account = Accounts(username=data.username,
                            password=data.password,

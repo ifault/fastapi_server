@@ -43,3 +43,9 @@ def is_token_expired(access_token: str) -> bool:
             return False
     except jwt.ExpiredSignatureError:
         return True
+
+
+def handle_username(username):
+    username = username.replace(" ", "").replace("\n", "").replace("\r", "")
+    username = username.replace("，", ",")
+    return username.split(",")
