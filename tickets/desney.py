@@ -2,7 +2,6 @@ import json
 import uuid
 import warnings
 from time import sleep
-from typing import Dict
 
 import requests
 from urllib3.exceptions import InsecureRequestWarning
@@ -11,7 +10,7 @@ warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
 
 class Desney:
-    def __init__(self, username, password):
+    def __init__(self, username, password, one_day="", one_day_count=0):
         self.uuid = str(uuid.uuid4())
         self.default_header = {
             "X-Store-Id": 'shdr_mobile',
@@ -55,12 +54,19 @@ class Desney:
         self.last_name = ""
         self.payment_id = None
         self.order = ""
+        self.one_day = one_day
+        self.one_day_count = one_day_count
         self.card = "321025197912160221"
+        self.contact_info = {}
         self.login_url = "https://www.shanghaidisneyresort.com/dprofile/api/v7/guests/login"
         self.sync_url = "https://www.shanghaidisneyresort.com/dprofile/api/login/phpsync"
         self.eligible_url = "https://central.shanghaidisneyresort.com/epep/api/party"
         self.morning_confirm = "https://central.shanghaidisneyresort.com/epep/api/shdr-early-park-entry-pass/comfirm"
         self.check_morning_date_url = "https://central.shanghaidisneyresort.com/epep/api/shdr-early-park-entry-pass/calender"
+        self.check_one_day_url = "https://central.shanghaidisneyresort.com/ticketing/api/v1/tickets/book/information/shdr-theme-park-tickets?storeId=shdr_mobile"
+        self.mock_url = "https://central.shanghaidisneyresort.com/ticketing/api/v1/cart/tickets/mock"
+        self.one_day_order_url = "https://central.shanghaidisneyresort.com/order/api/order/create"
+        self.token_url = "https://central.shanghaidisneyresort.com/order/api/auth/token"
         self.login_response = None
         self.sync_token_response = None
         self.eligible_response = None
@@ -68,6 +74,10 @@ class Desney:
         self.morning_confirm_response = None
         self.check_morning_date_response = None
         self.morning_transaction_response = None
+        self.check_one_day_response = None
+        self.get_one_day_mock_response = None
+        self.one_day_order_response = None
+        self.get_token_response = None
 
     def post(self, url, data, header=None, debug=False):
         self.load_cookies()
@@ -99,18 +109,18 @@ class Desney:
 
     def store_cookies(self):
         try:
-            with open(f"cookies/{self.hash}.json", "w") as f:
+            with open(f"cookies/{self.username}.json", "w") as f:
                 json.dump(self.session.cookies.get_dict(), f)
         except Exception as e:
-            print(e)
+            pass
 
     def load_cookies(self):
         try:
-            with open(f"cookies/{self.hash}.json", "r") as f:
+            with open(f"cookies/{self.username}.json", "r") as f:
                 cookies = json.load(f)
                 self.session.cookies.update(cookies)
         except Exception as e:
-            print(e)
+            pass
 
     def login(self):
         data = {"pinPass": False, "loginType": 1, "loginName": self.username, "mobileAreaNum": "86",
@@ -128,11 +138,26 @@ class Desney:
         self.access_token = token.get("accessToken", "")
         self.first_name = profile.get("firstName", "")
         self.last_name = profile.get("lastName", "")
+        self.contact_info = {
+            "firstName": profile.get("firstName"),
+            "lastName": profile.get("lastName"),
+            "firstNamePinyin": "",
+            "lastNamePinyin": "",
+            "idCardType": "ID_CARD",
+            "idCard": "321025197912160221",
+            "contactWay": "PHONE",
+            "countryCode": "86",
+            "countryCodeText": "+86 中国内地",
+            "mobilePhone": profile.get("mobile"),
+            "fullName": ""
+        }
+        print("完成登录")
         return self
 
     def syn_token(self):
         data = {"swid": self.sw_id, "accessToken": self.access_token}
         self.sync_token_response = self.post(self.sync_url, data=data)
+        print("完成同步token")
         return self
 
     def get_eligible(self):
@@ -242,7 +267,7 @@ class Desney:
         if self.target_date_en in avalible_date:
             return self
         sleep(5)
-        self.check_morning_date()
+        return self.check_morning_date()
 
     def pay_transactiona(self):
         url = f"https://apim.shanghaidisneyresort.com/payment-middleware-service/session/{self.payment_id}/transactions"
@@ -265,3 +290,85 @@ class Desney:
             raise StopIteration("调用链已在 pay_transactiona 中断")
         self.order = self.morning_transaction_response.get('params', {}).get('response_text', {})
         return self
+
+    def check_one_day(self):
+        data = {"piGroup": ["shdr-theme-park-tickets_2017-04-20_1_A_0_0_RF_AF_SOF_41",
+                            "shdr-theme-park-tickets_2017-04-20_1_C_0_0_RF_AF_SOF_41",
+                            "shdr-theme-park-tickets_2017-04-20_1_S_0_0_RF_AF_SOF_41",
+                            "shdr-theme-park-tickets_2021-10-08_1_D_0_0_RF_AF_SOF_41"], "type": None, "sessionId": ""}
+        self.check_one_day_response = self.post(self.check_one_day_url, data=data)
+        if not self.check_one_day_response:
+            self.messages.append("检查一日票日期失败")
+            raise StopIteration("调用链已在 check_one_day 中断")
+        date = self.check_one_day_response.get("date", {}).get("calendar", {}).get("data", [])
+        avalibles = [x['date'] for x in date if x.get('available')]
+        if self.one_day in avalibles:
+            print("可以购买,等待创建表单")
+            return self
+        sleep(5)
+        return self.check_one_day()
+
+    def get_one_day_mock(self):
+        if self.one_day_count <= 0:
+            self.messages.append("订购数量必须大于0")
+            raise StopIteration("调用链已在 get_one_day_mock 中断")
+        data = {"productGroupId": "ticket-group-shdr-theme-park-tickets-one-day-ticket-hybrid",
+                "productTypeId": "shdr-theme-park-tickets", "productCategoryId": "ThemePark",
+                "startDate": self.one_day,
+                "detail": [{"sku": "SHTP01OLRDQO", "quantity": self.one_day_count}],
+                "source": "main_cart", "goodsTag": "",
+                "swid": self.sw_id}
+        self.get_one_day_mock_response = self.post(self.mock_url, data=data)
+        if not self.get_one_day_mock_response:
+            self.messages.append("创建一日票表单失败")
+            raise StopIteration("调用链已在 get_one_day_mock 中断")
+        print("创建表单完成，等待创建订单")
+        return self
+
+    def get_one_day_order(self):
+        print("start to get order")
+        if not self.get_one_day_mock_response:
+            self.messages.append("未获取预定表单信息")
+            raise StopIteration("调用链已在 get_one_day_order 中断")
+        payload = self.get_one_day_mock_response
+        payload['contactInfo'] = self.contact_info
+        payload['bundles'] = []
+        payload['realNameInfos'] = []
+        self.default_header['X-Guest-Token'] = self.access_token
+        self.default_header['Authorization'] = "bearer {}".format(self.auth_token)
+        self.default_header['User-Agent'] = 'Mozilla/5.0 (Linux; Android 12; DCO-AL00 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Mobile Safari/537.36,DISNEY_MOBILE_ANDROID/11500,language/zh'
+        self.default_header['X-Sw-Id'] = self.sw_id
+        self.one_day_order_response = self.post(self.one_day_order_url, data=payload, debug=True)
+        if not self.one_day_order_response:
+            self.messages.append("创建订单失败")
+            raise StopIteration("调用链已在 get_one_day_order 中断")
+        self.payment_id = self.one_day_order_response.get('data', {}).get('paymentSessionId', '')
+        print("完成订单，等待获取支付链接")
+        return self
+
+    def get_token(self):
+        self.default_header['X-Guest-Token'] = self.access_token
+        self.default_header['X-Native-Token'] = self.access_token
+        self.default_header['X-Correlation-Id'] = "b4abd3e9-5267-4e55-bfa0-c15dd0631ed6"
+        self.default_header['Referer'] = "https://central.shanghaidisneyresort.com/commerce/order/checkout?source=ticketing-v2"
+        self.default_header['X-Sw-Id'] = self.sw_id
+
+        data = {"countryCode": "CN", "email": self.contact_info.get("email"),
+                "firstName": self.contact_info.get("firstName"),
+                "guestToken": self.access_token, "hasFirstName": True, "hasLastName": True,
+                "isRecommendToggleOn": True, "isoCountryCode2": "CN", "lastName": self.contact_info.get("lastNAME"),
+                "mobileAreaNum": "86",
+                "mobileCountryISO2": "CN", "phoneNumber": self.contact_info.get("phoneNumber"),
+                "profileId": self.sw_id, "profilePhoneCode": "86",
+                "profilePhoneNumber": self.contact_info.get("phoneNumber")}
+        self.get_token_response = self.post(self.token_url, data=data)
+        if not self.get_token_response:
+            self.messages.append("获取token失败")
+            raise StopIteration("调用链已在 get_token 中断")
+        self.auth_token = self.get_token_response.get("data", {}).get("Authorization")
+        print(self.auth_token)
+        print("获取token完成")
+        return self
+
+
+

@@ -1,13 +1,17 @@
+import base64
+import json
 import uuid
+from pprint import pprint
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Header
 from starlette.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from common.service import create_access_token, handle_username
+from common.service import create_access_token, handle_username, is_valid_id, is_valid_date
 from models.db import Users, Accounts, Paid
 from models.model import LoginData, DeleteAccountData, AddAccountData, ModifyAccountData, PaidData, MonitorData, \
-    JsonResponseModel, StopAccountData
-from tasks.morning import monitor
+    JsonResponseModel, StopAccountData, OneDayAccountData
+from tasks.morning import monitor, one
 from celery.app.control import Control
 from app_celery import celery
 
@@ -64,7 +68,18 @@ async def mod_account(data: ModifyAccountData):
 
 @router.post("/account/pay")
 async def pay_account(data: PaidData):
-    account = await Accounts.get(uuid=uuid, user_id=data.user_id)
+    account = await Accounts.filter(uuid=data.uuid, user_id=data.user_id).first()
+    # dd = "YXBwX2lkPTIwMTkxMDI5Njg3MzE3NjcmYml6X2NvbnRlbnQ9JTdCJTIyb3V0X3RyYWRlX25vJTIyJTNBJTIyMjAyNDA1MTEwNTAxMDAwNjA2ODYlMjIlMkMlMjJwcm9kdWN0X2NvZGUlMjIlM0ElMjJRVUlDS19NU0VDVVJJVFlfUEFZJTIyJTJDJTIydG90YWxfYW1vdW50JTIyJTNBJTIyMTg5LjAwJTIyJTJDJTIyc3ViamVjdCUyMiUzQSUyMiVFNCVCOCU4QSVFNiVCNSVCNyVFOCVCRiVBQSVFNSVBMyVBQiVFNSVCMCVCQyVFNSVCQSVBNiVFNSU4MSU4NyVFNSU4QyVCQSVFNCVCQSVBNyVFNSU5MyU4MSUyMiUyQyUyMnBhc3NiYWNrX3BhcmFtcyUyMiUzQSUyMjE2MzM2NzkwJTIyJTJDJTIydGltZW91dF9leHByZXNzJTIyJTNBJTIyMjltJTIyJTJDJTIyZXh0ZW5kX3BhcmFtcyUyMiUzQSU3QiUyMnN5c19zZXJ2aWNlX3Byb3ZpZGVyX2lkJTIyJTNBJTIyMjA4ODEyMTg1MDU0OTYzMCUyMiU3RCU3RCZjaGFyc2V0PXV0Zi04Jm1ldGhvZD1hbGlwYXkudHJhZGUuYXBwLnBheSZub3RpZnlfdXJsPWh0dHBzJTNBJTJGJTJGcHJvZC5vcmlnaW4tcG13LnNoYW5naGFpZGlzbmV5cmVzb3J0LmNvbSUyRmdsb2JhbC1wb29sLW92ZXJyaWRlLUElMkZwYXltZW50LW1pZGRsZXdhcmUtc2VydmljZSUyRnRyYW5zYWN0aW9uJTJGYWxpcGF5JTJGY29uZmlybSUyRjE2MzM2NzkwJnNpZ249UUtvTjVhZlM4Rk9IdGdTeWcwZHozRjlNZCUyRjRnOUVCY01vN2w1QXMlMkZUV240eElqeG5JUk9XM0NnNXJ3Q29hJTJCJTJCSEJYcjMzbUhLRVBjYUVSM0Zxc29iZUZpYVgxWTlaaFFORWFKc2Z3cDF3N0s4JTJCYzNnWWpKd3hrVE1HUjdxdUh3SmRsdlVJdzZCZzAxWVglMkI1dmdCVWdaSkxRU3VNYnAlMkJ2TnNFbHNKWUslMkIyZSUyRnNiSTFGeUIyc2lwY2JTMFBHdEVLdm15NkI5TEpyQ0ZUQVZpdyUyRlZKMUdQRThKTjYyVDBPZSUyQlFvJTJCdjJ3V2dWbU11V3VqbUp1Ulk3a05PWlJwNDg2djdKQ1ZTSEdjQ1dLcG9IWHhWZUZjUWE3cFdDbnVQZEx2eiUyRkZQMEducnJ5JTJGMG1rZWNvQm1NbmZvZTJPMWRQNVhLZEFPbFhZOGduZzdSaDFDakpCRVJHQSUzRCUzRCZzaWduX3R5cGU9UlNBMiZ0aW1lc3RhbXA9MjAyNC0wNS0xMSsxNyUzQTU2JTNBMzMmdmVyc2lvbj0xLjA="
+    # # encoded_string = "SGVsbG8gV29ybGQ="
+    # decoded_bytes = base64.b64decode(dd)
+    # decoded_string = decoded_bytes.decode('utf-8')
+    # # params_formated = unquote(decoded_string)
+    # params = decoded_string.split('&')
+    # biz_content_encoded = next(item for item in params if item.startswith('biz_content='))
+    # biz_content_encoded = biz_content_encoded.split('=')[1]  # 获取编码后的biz_content值
+    # biz_content_decoded = unquote(biz_content_encoded)
+    # biz_content_json = json.loads(biz_content_decoded)
+    # pprint(biz_content_json)
     if account:
         account.status = "paid"
         await account.save()
@@ -79,6 +94,7 @@ async def start_account(data: MonitorData):
         user = await account.user.first()
         print(user.__dict__)
         task = monitor.delay({**account.__dict__, "access_token": user.__dict__['access_token'], "email": data.email})
+        account.details = ""
         account.status = "waiting"
         account.task_id = task.id
         await account.save()
@@ -113,6 +129,35 @@ async def stop_account(data: StopAccountData):
         return JsonResponseModel(success=True, message="任务终止", data={})
     return JsonResponseModel(success=False, message="任务终止失败", data={})
 
+
+@router.post("/account/one_day", dependencies=[Depends(authenticate)])
+async def one_day_account(data: OneDayAccountData):
+    valid = True
+    account = await Accounts.filter(user_id=data.user_id, uuid=data.uuid).first()
+
+    if not is_valid_id(data.card):
+        account.details = "身份证号码错误"
+        valid = False
+    date = is_valid_date(data.target_day)
+    if not date:
+        account.details = "日期格式输入错误"
+        valid = False
+    if data.count <= 0:
+        account.details = "数量输入错误"
+        valid = False
+
+    if not valid:
+        await account.save()
+        return JsonResponseModel(success=False, message="输入错误", data={})
+
+    user = await account.user.first()
+    task = one.delay({**account.__dict__, "access_token": user.__dict__['access_token'], "email": data.email}, date, data.count)
+    account.details = ""
+    account.status = "waiting"
+    account.task_id = task.id
+    await account.save()
+
+    return JsonResponseModel(success=True, message="任务开始", data={})
 
 def process_data(data):
     free = []

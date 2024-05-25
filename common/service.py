@@ -2,6 +2,7 @@ import datetime
 import jwt
 from dotenv import load_dotenv
 import os
+import re
 
 load_dotenv()
 
@@ -49,3 +50,37 @@ def handle_username(username):
     username = username.replace(" ", "").replace("\n", "").replace("\r", "")
     username = username.replace("，", ",")
     return username.split(",")
+
+
+def is_valid_id(id_number):
+    # 长度检查
+    if len(id_number) != 18:
+        return False
+
+    # 格式检查
+    if not re.match(r'^\d{17}[\dXx]$', id_number):
+        return False
+
+    # 校验码检查
+    weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
+    check_codes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2']
+
+    sum_ = 0
+    for i in range(17):
+        sum_ += int(id_number[i]) * weights[i]
+
+    index = sum_ % 11
+    if check_codes[index].upper() != id_number[-1].upper():
+        return False
+
+    return True
+
+
+def is_valid_date(date_string, format='%Y%m%d'):
+    from datetime import datetime
+    try:
+        date_obj = datetime.strptime(date_string, format)
+        formatted_date = date_obj.strftime("%Y-%m-%d")
+        return formatted_date
+    except ValueError:
+        return None

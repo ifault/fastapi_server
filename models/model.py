@@ -61,6 +61,14 @@ class StopAccountData(APIModel):
     task_id: str
 
 
+class OneDayAccountData(APIModel):
+    uuid: str
+    target_day: str
+    count: int
+    card: str
+    email: Optional[str]
+
+
 class AddAccountData(APIModel):
     username: str
     password: str
