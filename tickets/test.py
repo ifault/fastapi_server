@@ -1,13 +1,13 @@
 import requests
 
-from common.service import is_valid_id
 from tickets.desney import Desney
+from tickets.responses import order_info_response
+
 
 def desney_test():
-    desney = Desney("13127778188", "qwer1234")
+    desney = Desney("13052739901", "abcd@1234", debug=True)
     try:
-        # desney.check_one_day().login().syn_token().get_one_day_mock().get_token().get_one_day_order()
-        desney.login()
+        desney = desney.login().syn_token().get_order_info()
     except StopIteration:
         messages = desney.get_message()
         print("\n".join(messages))
@@ -24,9 +24,20 @@ def connect_test():
     else:
         print("无法访问百度首页，状态码：", response.status_code)
 
-if __name__ == '__main__':
-    desney_test()
-    # print(is_valid_id("222403198502200011"))
 
+if __name__ == '__main__':
+    desney = Desney("13052739901", "abcd@1234", debug=False)
+    # desney = Desney("13767116418", "XY123456", debug=True)
+    try:
+        desney = desney.login().syn_token().get_token().link_order("GAL6305323007882207")
+        messages = desney.get_message()
+        print("\n".join(messages))
+    except StopIteration:
+        messages = desney.get_message()
+        print("\n".join(messages))
+    except Exception:
+        messages = desney.get_message()
+        print("\n".join(messages))
+    # print(is_valid_id("222403198502200011"))
 
 

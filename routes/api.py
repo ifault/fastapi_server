@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header
 from starlette.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from common.service import create_access_token, handle_username, is_valid_id, is_valid_date
-from models.db import Users, Accounts, Paid
+from models.db import Users, Accounts, Paid, Task
 from models.model import LoginData, DeleteAccountData, AddAccountData, ModifyAccountData, PaidData, MonitorData, \
     JsonResponseModel, StopAccountData, OneDayAccountData
 from tasks.morning import monitor, one
@@ -171,3 +171,18 @@ def process_data(data):
         elif item['status'] == "pending":
             pending.append(item)
     return {"free": free, "waiting": waiting, "pending": pending}
+
+
+@router.get("/tasks/{status}")
+async def get_tasks(status: str):
+    print(status)
+    if status == "all":
+        return await Task.all()
+    return await Task.filter(status=status).all()
+
+
+@router.post("/order")
+async def get_order_demo():
+    return JsonResponseModel(success=True, message="success", data={
+        "url": "http://www.baidu.com"
+    })

@@ -1,12 +1,12 @@
 from celery import Celery
-from sqlalchemy import create_engine
+from celery.schedules import timedelta
 
 
 def create_app():
     celery_ = Celery(
         __name__,
-        broker='redis://redis:6379/0',
-        backend="db+postgresql://user:pass@postgres:5432/db",
+        broker='redis://host.docker.internal:6379/0',
+        backend="db+postgresql://user:pass@host.docker.internal:5432/db",
         task_ignore_result=False,
         include=['tasks.morning']
     )
@@ -14,3 +14,17 @@ def create_app():
 
 
 celery = create_app()
+celery.conf.update(
+    CELERYBEAT_SCHEDULE={
+        'run-every-5-seconds-for-run': {
+            'task': 'tasks.morning.run_task',
+            'schedule': timedelta(seconds=5),
+            'args': []
+        },
+        'run-every-5-seconds-for-stop': {
+            'task': 'tasks.morning.stop_task',
+            'schedule': timedelta(seconds=5),
+            'args': []
+        },
+    },
+)

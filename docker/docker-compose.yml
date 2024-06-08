@@ -1,0 +1,25 @@
+version: '3'
+services:
+  redis:
+    image: redis:latest
+    environment:
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    volumes:
+      - ../data/redis-data:/data
+    ports:
+      - 6379:6379
+
+  postgres:
+    image: postgres:latest
+
+    volumes:
+      - ../data/postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=P6Bz8pzahxsAMxA7
+      - POSTGRES_DB=db
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    ports:
+      - 5432:5432

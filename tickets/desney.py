@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 import warnings
 from time import sleep
@@ -7,10 +8,17 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 warnings.filterwarnings("ignore", category=InsecureRequestWarning)
-
+file_handler = logging.FileHandler(filename="logs/desney.log")
+file_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+logger = logging.getLogger("desney")
+logger.addHandler(file_handler)
+logger.setLevel(logging.INFO)
 
 class Desney:
-    def __init__(self, username, password, one_day="", one_day_count=0):
+    def __init__(self, username, password, one_day="", one_day_count=0, debug=False):
+        self.debug = debug
         self.uuid = str(uuid.uuid4())
         self.default_header = {
             "X-Store-Id": 'shdr_mobile',
@@ -41,6 +49,7 @@ class Desney:
         self.auth_token = ""
         self.hash = hash(username)
         self.sw_id = None
+        self.profile = None
         self.access_token = None
         self.quantity = 0
         self.unit_price = 0
@@ -54,6 +63,7 @@ class Desney:
         self.last_name = ""
         self.payment_id = None
         self.order = ""
+        self.morning_card = ""
         self.one_day = one_day
         self.one_day_count = one_day_count
         self.card = "321025197912160221"
@@ -67,6 +77,9 @@ class Desney:
         self.mock_url = "https://central.shanghaidisneyresort.com/ticketing/api/v1/cart/tickets/mock"
         self.one_day_order_url = "https://central.shanghaidisneyresort.com/order/api/order/create"
         self.token_url = "https://central.shanghaidisneyresort.com/order/api/auth/token"
+        self.order_url = 'https://central.shanghaidisneyresort.com/order/api/order'
+        self.link_order_url = 'https://central.shanghaidisneyresort.com/epep/api/linkOrderFind'
+        self.confirm_order_url = 'https://central.shanghaidisneyresort.com/epep/api/linkConfirm'
         self.login_response = None
         self.sync_token_response = None
         self.eligible_response = None
@@ -78,16 +91,23 @@ class Desney:
         self.get_one_day_mock_response = None
         self.one_day_order_response = None
         self.get_token_response = None
+        self.get_order_info_response = None
+        self.find_link_order_response = None
+        self.confirm_link_order_response = None
 
     def post(self, url, data, header=None, debug=False):
         self.load_cookies()
         post_header = header if header else self.default_header
-        response = self.session.post(url, json=data, headers=post_header, verify=False)
-        if debug:
+        try:
+            response = self.session.post(url, json=data, headers=post_header, verify=False)
+        except Exception as e:
+            print(e)
+        if debug or self.debug:
             print(response.json())
         if response.status_code in self.status:
             self.store_cookies()
             return response.json()
+        print("post end")
         return None
 
     def get(self, url, data=None, header=None):
@@ -123,6 +143,7 @@ class Desney:
             pass
 
     def login(self):
+        logger.info(f"开始登录 {self.username}, {self.password}")
         data = {"pinPass": False, "loginType": 1, "loginName": self.username, "mobileAreaNum": "86",
                 "mobileCountryISO2": "CN", "functionType": "GUEST_LOGIN_MOBILE",
                 "password": self.password,
@@ -130,17 +151,18 @@ class Desney:
                 "sessionid": "undefined"}
         self.login_response = self.post(self.login_url, data)
         if not self.login_response:
+            logger.info("用户名密码错误")
             self.messages.append("用户名密码错误")
             raise StopIteration("调用链已在 method1 中断")
-        profile = self.login_response.get('data', {}).get('profile', {})
+        self.profile = self.login_response.get('data', {}).get('profile', {})
         token = self.login_response.get('data', {}).get('token', {})
-        self.sw_id = profile.get("swid", "")
+        self.sw_id = self.profile.get("swid", "")
         self.access_token = token.get("accessToken", "")
-        self.first_name = profile.get("firstName", "")
-        self.last_name = profile.get("lastName", "")
+        self.first_name = self.profile.get("firstName", "")
+        self.last_name = self.profile.get("lastName", "")
         self.contact_info = {
-            "firstName": profile.get("firstName"),
-            "lastName": profile.get("lastName"),
+            "firstName": self.profile.get("firstName"),
+            "lastName": self.profile.get("lastName"),
             "firstNamePinyin": "",
             "lastNamePinyin": "",
             "idCardType": "ID_CARD",
@@ -148,16 +170,16 @@ class Desney:
             "contactWay": "PHONE",
             "countryCode": "86",
             "countryCodeText": "+86 中国内地",
-            "mobilePhone": profile.get("mobile"),
+            "mobilePhone": self.profile.get("mobile"),
             "fullName": ""
         }
-        print("完成登录")
+        logger.info(f"登录完毕 {self.username}, {self.password}")
         return self
 
     def syn_token(self):
         data = {"swid": self.sw_id, "accessToken": self.access_token}
         self.sync_token_response = self.post(self.sync_url, data=data)
-        print("完成同步token")
+        logger.info(f"完成同步token {self.username}, {self.password}")
         return self
 
     def get_eligible(self):
@@ -192,6 +214,7 @@ class Desney:
         eligible = response_body.get('eligible', [])
         not_eligible = response_body.get('nonEligible', [])
         self.quantity = len(eligible)
+        logger.info(f"有效绑定数量[{self.quantity}], 过期绑定数量[{len(not_eligible)}]")
         if len(eligible) == 0:
             self.messages.append(f"有效绑定数量[{self.quantity}], 过期绑定数量[{len(not_eligible)}]")
             raise StopIteration("检测早想绑定中断")
@@ -213,12 +236,15 @@ class Desney:
             self.start_time = prices[0].get("startDateTime", "")
             self.unit_price = prices[0].get("unitPrice", 0)
             self.total_price = str(int(self.unit_price) * self.quantity)
+            logger.info(f"获取价格成功, 单价[{self.unit_price}], 总价[{self.total_price}], 开始时间[{self.start_time}]")
         else:
+            logger.info("获取价格失败")
             self.messages.append("获取价格失败")
             raise StopIteration("调用链已在 get_morning_price 中断")
         return self
 
     def pay_morning_order(self):
+        logger.info("开始支付早享卡")
         data = {"contactForm": {"countrycode": "CN", "phone": "8613127778188", "governmentId": self.card,
                                 "items": {"quantity": self.quantity, "productType": "shdr-early-park-entry-pass",
                                           "eventDate": self.target_date_en, "text": "早享卡",
@@ -246,13 +272,19 @@ class Desney:
                                 "countryCode": "CN",
                                 "needsShowTandCInPayment": False}}
         self.morning_confirm_response = self.post(self.morning_confirm, data, debug=True)
+        logger.info("支付返回结果------------->")
+        logger.info(self.morning_confirm_response)
+        logger.info("<-------------支付返回结果")
         if not self.morning_confirm_response:
+            logging.info("支付失败")
             self.messages.append("支付失败")
             raise StopIteration("调用链已在 pay_morning_order 中断")
         data = self.morning_confirm_response.get('data', {})
         error_message = data.get('message', {}).get('errorMessage', "")
-        if not error_message:
+        if error_message:
             self.messages.append(error_message)
+            logger.info("调用链已在 pay_morning_order 中断")
+            logger.info(error_message)
             raise StopIteration("调用链已在 pay_morning_order 中断")
         self.payment_id = data.get('paymentSessionId', '')
         return self
@@ -260,16 +292,21 @@ class Desney:
     def check_morning_date(self):
         self.check_morning_date_response = self.get(self.check_morning_date_url)
         if not self.check_morning_date_response:
+            logger.info("检查早享卡日期失败")
             self.messages.append("检查早享卡日期失败")
             raise StopIteration("调用链已在 check_morning_date 中断")
         date = self.check_morning_date_response.get('data', {}).get('data', [])
         avalible_date = [x['date'] for x in date if not x.get('soldOut')]
+        logger.info(f"可购买日期{avalible_date}")
         if self.target_date_en in avalible_date:
+            logger.info("可以购买，等待创建表单")
             return self
+        logger.info("不可购买，等待5秒")
         sleep(5)
         return self.check_morning_date()
 
     def pay_transactiona(self):
+        logger.info("生成支付订单")
         url = f"https://apim.shanghaidisneyresort.com/payment-middleware-service/session/{self.payment_id}/transactions"
         data = {"clientIp": "10.0.2.15", "deviceInfo": "Android|Android 12|22041216C", "payChannel": "APP",
                 "payOption": "ALIPAY", "region": "cn"}
@@ -285,10 +322,13 @@ class Desney:
             "X-Conversation-Id": self.payment_id,
         }
         self.morning_transaction_response = self.post(url, data, headers, debug=True)
+        logger.info("订单结果------------->")
+        logger.info(self.morning_transaction_response)
+        logger.info("<-------------订单结果")
         if not self.morning_transaction_response:
             self.messages.append("获取订单失败")
             raise StopIteration("调用链已在 pay_transactiona 中断")
-        self.order = self.morning_transaction_response.get('params', {}).get('response_text', {})
+        self.order = self.morning_transaction_response.get('params', {}).get('response_text', '')
         return self
 
     def check_one_day(self):
@@ -302,14 +342,17 @@ class Desney:
             raise StopIteration("调用链已在 check_one_day 中断")
         date = self.check_one_day_response.get("date", {}).get("calendar", {}).get("data", [])
         avalibles = [x['date'] for x in date if x.get('available')]
+        logger.info(f"可购买日期{avalibles}")
         if self.one_day in avalibles:
-            print("可以购买,等待创建表单")
+            logger.info("可以购买,等待创建表单")
             return self
+        logger.info("不可购买，等待5秒")
         sleep(5)
         return self.check_one_day()
 
     def get_one_day_mock(self):
         if self.one_day_count <= 0:
+            logger.info(f"订购数量必须大于0, 当前数量{self.one_day_count}")
             self.messages.append("订购数量必须大于0")
             raise StopIteration("调用链已在 get_one_day_mock 中断")
         data = {"productGroupId": "ticket-group-shdr-theme-park-tickets-one-day-ticket-hybrid",
@@ -320,14 +363,16 @@ class Desney:
                 "swid": self.sw_id}
         self.get_one_day_mock_response = self.post(self.mock_url, data=data)
         if not self.get_one_day_mock_response:
+            logger.info("创建一日票表单失败")
             self.messages.append("创建一日票表单失败")
             raise StopIteration("调用链已在 get_one_day_mock 中断")
-        print("创建表单完成，等待创建订单")
+        logger.info("创建表单完成，等待创建订单")
         return self
 
     def get_one_day_order(self):
-        print("start to get order")
+        logger.info("开始创建一日票订单")
         if not self.get_one_day_mock_response:
+            logger.info("未获取预定表单信息")
             self.messages.append("未获取预定表单信息")
             raise StopIteration("调用链已在 get_one_day_order 中断")
         payload = self.get_one_day_mock_response
@@ -343,7 +388,7 @@ class Desney:
             self.messages.append("创建订单失败")
             raise StopIteration("调用链已在 get_one_day_order 中断")
         self.payment_id = self.one_day_order_response.get('data', {}).get('paymentSessionId', '')
-        print("完成订单，等待获取支付链接")
+        logger.info("完成订单，等待获取支付链接")
         return self
 
     def get_token(self):
@@ -366,9 +411,126 @@ class Desney:
             self.messages.append("获取token失败")
             raise StopIteration("调用链已在 get_token 中断")
         self.auth_token = self.get_token_response.get("data", {}).get("Authorization")
-        print(self.auth_token)
-        print("获取token完成")
+        return self
+
+    def get_order_info(self):
+        self.default_header['X-Guest-Token'] = self.access_token
+        self.default_header['X-Native-Token'] = self.access_token
+        self.default_header['X-Correlation-Id'] = "b4abd3e9-5267-4e55-bfa0-c15dd0631ed6"
+        self.default_header['X-Guest-Token'] = self.access_token
+        self.default_header['Authorization'] = "bearer {}".format(self.auth_token)
+        self.default_header[
+            'User-Agent'] = 'Mozilla/5.0 (Linux; Android 12; DCO-AL00 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Mobile Safari/537.36,DISNEY_MOBILE_ANDROID/11500,language/zh'
+        self.default_header['X-Sw-Id'] = self.sw_id
+        self.default_header[
+            'Referer'] = "https://central.shanghaidisneyresort.com/commerce/order/checkout?source=ticketing-v2"
+        self.default_header['X-Sw-Id'] = self.sw_id
+        data = {
+            'page': {
+                'currentPage': 1,
+                'skip': 0,
+                'take': 20,
+            },
+            'w': {
+                'include': {
+                    'storeId': [
+                        'shdr',
+                        'shdr_wechat',
+                        'shdr_mobile',
+                        'shdr_partnership',
+                        'shdr_isr',
+                        'shdr_drc',
+                        'shdr_club33',
+                        'shdr_vrc',
+                        'shdr_kqwh',
+                        'shdr_slpu',
+                        'shdr_msp',
+                        'shdr_shgnb',
+                        'shdr_ssh',
+                        'shdr_phsh',
+                        'shdr_isr',
+                        'shdr_shagh',
+                        'shdr_tsrsj',
+                        'shdr_pce',
+                        'shdr_icexpo',
+                        'shdr_shaws',
+                        'shdr_khpu',
+                        'shdr_rsph',
+                        'shdr_jhsh',
+                    ],
+                },
+                'excludePending': [
+                    'shdr_drc',
+                    'shdr_club33',
+                    'shdr_vrc',
+                ],
+            },
+        }
+        self.get_order_info_response = self.post(self.order_url, data=data, debug=True)
+        orders = self.get_order_info_response.get("data", {}).get("orders", {}).get("list", [])
+        return orders[:3]
+
+    def link_order(self, morning_number):
+        logger.info("开始确认关联早享卡是否有效")
+        self.morning_card = morning_number
+        self.default_header['X-Guest-Token'] = self.access_token
+        self.default_header['Authorization'] = "bearer {}".format(self.auth_token)
+        self.default_header[
+            'User-Agent'] = 'Mozilla/5.0 (Linux; Android 12; DCO-AL00 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Mobile Safari/537.36,DISNEY_MOBILE_ANDROID/11500,language/zh'
+        self.default_header['X-Sw-Id'] = self.sw_id
+        json_data = {
+            'param': {
+                'orderNumber': morning_number,
+                'countryCode': 'CN',
+                'email': self.profile.get("email"),
+                'firstName': self.profile.get("firstName"),
+                'guestToken': self.access_token,
+                'hasFirstName': False,
+                'hasLastName': False,
+                'isRecommendToggleOn': True,
+                'isoCountryCode2': 'CN',
+                'lastName': self.last_name,
+                'mobileAreaNum': '86',
+                'mobileCountryISO2': 'CN',
+                'phoneNumber': f'86{self.profile.get("mobile")}',
+                'profileId': self.profile.get('swid'),
+                'profilePhoneCode': '86',
+                'profilePhoneNumber': self.profile.get("mobile"),
+                'maskFirstName': True,
+            },
+        }
+        self.find_link_order_response = self.post(self.link_order_url, json_data)
+        if not self.find_link_order_response:
+            self.messages.append("关联订单失败")
+            raise StopIteration("调用链已在 link_order 中断")
+        code = self.find_link_order_response.get("data", {}).get("code", "")
+        if code != 200:
+            self.messages.append("关联码错误")
+            raise StopIteration("调用链已在 link_order 中断")
+        logger.info(f"账号[{self.username}]和[{morning_number}]可以关联")
         return self
 
 
 
+    def confirm_link_order(self):
+        logger.info("开始关联早享卡")
+        if not self.morning_card:
+            self.messages.append("早享卡号码为空")
+            raise StopIteration("调用链已在 confirm_link_order 中断")
+
+        self.default_header['X-Guest-Token'] = self.access_token
+        self.default_header['Authorization'] = "bearer {}".format(self.auth_token)
+        self.default_header[
+            'User-Agent'] = 'Mozilla/5.0 (Linux; Android 12; DCO-AL00 Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Mobile Safari/537.36,DISNEY_MOBILE_ANDROID/11500,language/zh'
+        self.default_header['X-Sw-Id'] = self.sw_id
+        json_data ={"param":{"id":f"{self.morning_card}","type":"order"}}
+        self.confirm_link_order_response = self.post(self.confirm_order_url, json_data)
+        if not self.confirm_link_order_response:
+            self.messages.append("确认关联订单失败")
+            raise StopIteration("调用链已在 confirm_link_order 中断")
+        code = self.confirm_link_order_response.get("data", {}).get("code", "")
+        if code != 200:
+            self.messages.append("关联码错误")
+            raise StopIteration("调用链已在 confirm_link_order 中断")
+        logger.info(f"账号[{self.username}]和[{self.morning_card}]关联成功")
+        return self
