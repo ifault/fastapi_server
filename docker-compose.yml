@@ -14,9 +14,10 @@ services:
     command: uvicorn app:app --host 0.0.0.0 --port 8000
 
   celery-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+    image: p310:latest
     volumes:
       - .:/app
     environment:
@@ -25,9 +26,10 @@ services:
     command: celery -A app_celery.celery worker
 
   celery-beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+    image: p310:latest
     volumes:
       - .:/app
     environment:
