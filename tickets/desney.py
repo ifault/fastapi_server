@@ -8,7 +8,7 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 warnings.filterwarnings("ignore", category=InsecureRequestWarning)
-file_handler = logging.FileHandler(filename="logs/desney.log")
+file_handler = logging.FileHandler(filename="/app/logs/desney.log")
 file_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
