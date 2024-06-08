@@ -17,7 +17,7 @@ from tickets.desney import Desney
 import requests
 
 load_dotenv()
-file_handler = logging.FileHandler(filename="logs/task.log")
+file_handler = logging.FileHandler(filename="/app/logs/task.log")
 file_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
