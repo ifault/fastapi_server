@@ -5,7 +5,7 @@ from celery.schedules import timedelta
 def create_app():
     celery_ = Celery(
         __name__,
-        broker='redis://host.docker.internal:6379/0',
+        broker='redis://172.18.0.1:6379/0',
         backend="db+postgresql://user:pass@host.docker.internal:5432/db",
         task_ignore_result=False,
         include=['tasks.morning']
