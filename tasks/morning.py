@@ -7,7 +7,6 @@ from celery.app.control import Control
 from dotenv import load_dotenv
 from tortoise import Tortoise
 from app_celery import celery
-from app_redis import get_redis_
 from common.email import EmailSender
 from celery.signals import task_success, worker_process_init, worker_process_shutdown
 from models.db import Task, History
@@ -140,13 +139,6 @@ def handle_success(**kwargs):
         asyncio.get_event_loop().run_until_complete(
             update_task_status(result['id'], result['details'], result['order'], "error"))
 
-
-@celery.task()
-def notify(token: str, message: str):
-    r = get_redis_()
-    r.lpush(token, message)
-    r.expire(token, 60 * 30)
-    return message
 
 
 @celery.task()

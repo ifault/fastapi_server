@@ -1,12 +1,24 @@
+import os
+
 from celery import Celery
 from celery.schedules import timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def create_app():
+    host = os.getenv("POSTGRES_HOST")
+    port = os.getenv("DATABASE_PORT")
+    name = os.getenv("DATABASE_NAME")
+    user = os.getenv("DATABASE_USER")
+    pass_ = os.getenv("DATABASE_PASSWORD")
+    r_host = os.getenv("REDIS_HOST")
+    r_port = os.getenv("REDIS_PORT")
     celery_ = Celery(
         __name__,
-        broker='redis://172.18.0.1:6379/0',
-        backend="db+postgresql://user:pass@host.docker.internal:5432/db",
+        broker=f'redis://{r_host}:{r_port}/0',
+        backend=F"db+postgresql://{user}:{pass_}@{host}:{port}/{name}",
         task_ignore_result=False,
         include=['tasks.morning']
     )

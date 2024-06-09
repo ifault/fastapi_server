@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from tortoise import Tortoise
 
-from app_redis import get_redis
 from routes import api
 from settings import TORTOISE_ORM
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,9 +23,7 @@ logging.basicConfig(
 async def lifespan(fapp: FastAPI):
     await Tortoise.init(config=TORTOISE_ORM)
     await Tortoise.generate_schemas()
-    fapp.redis = await get_redis()
     yield
-    await fapp.redis.close()
     await Tortoise.close_connections()
 
 
