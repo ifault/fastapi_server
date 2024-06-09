@@ -10,7 +10,7 @@ from app_celery import celery
 from app_redis import get_redis_
 from common.email import EmailSender
 from celery.signals import task_success, worker_process_init, worker_process_shutdown
-from models.db import Accounts, Task, History
+from models.db import Task, History
 from settings import TORTOISE_ORM
 from celery._state import _task_stack
 from tickets.desney import Desney
@@ -106,13 +106,6 @@ def monitor(account: dict):
         account['success'] = False
         account['details'] = ", ".join(desney.get_message())
     return account
-
-
-async def update_account_status(uuid: str, order: str, details: str, status: str):
-    await Accounts.filter(uuid=uuid.strip()).update(status=status,
-                                                    details=details,
-                                                    order=order,
-                                                    order_time=datetime.now())
 
 
 async def update_task_status(id: int, details: str, order: str, status: str):

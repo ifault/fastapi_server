@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from tortoise import Tortoise
 
 from app_redis import get_redis
-from routes import api, demo
+from routes import api
 from settings import TORTOISE_ORM
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,7 +23,7 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(fapp: FastAPI):
     await Tortoise.init(config=TORTOISE_ORM)
-    # await Tortoise.generate_schemas()
+    await Tortoise.generate_schemas()
     fapp.redis = await get_redis()
     yield
     await fapp.redis.close()
@@ -40,10 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# app.include_router(server.ws_router, prefix="/ws")
 app.include_router(api.router, prefix="/api")
-app.include_router(demo.demo_router, prefix="/demo")
-
 
 
 if __name__ == "__main__":
