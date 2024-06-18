@@ -25,24 +25,24 @@ logger.addHandler(file_handler)
 logger.setLevel(logging.INFO)
 
 
-async def get_pending_tasks():
-    tasks = await Task.filter(status="started").all()
-    for task in tasks:
-        logger.info(
-            f"得到新的任务: username {task.username}, category {task.category}, targetDay {task.targetDay}, count {task.count}")
-        task.status = "running"
-        await task.save()
-        date = task.targetDay
-        date = datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d") if date else None
-        if task.category == "oneday":
-            tt = one.delay(task.to_dict(), date, task.count)
-            task.taskId = tt.id
-            await task.save()
-        elif task.category == "morning":
-            tt = monitor.delay(task.to_dict())
-            task.taskId = tt.id
-            await task.save()
-    return tasks
+# async def get_pending_tasks():
+#     tasks = await Task.filter(status="started").all()
+#     for task in tasks:
+#         logger.info(
+#             f"得到新的任务: username {task.username}, category {task.category}, targetDay {task.targetDay}, count {task.count}")
+#         task.status = "running"
+#         await task.save()
+#         date = task.targetDay
+#         date = datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d") if date else None
+#         if task.category == "oneday":
+#             tt = one.delay(task.to_dict(), date, task.count)
+#             task.taskId = tt.id
+#             await task.save()
+#         elif task.category == "morning":
+#             tt = monitor.delay(task.to_dict())
+#             task.taskId = tt.id
+#             await task.save()
+#     return tasks
 
 
 async def get_stopped_tasks():
@@ -55,14 +55,14 @@ async def get_stopped_tasks():
         celery_control.revoke(task_id, terminate=True)
 
 
-@celery.task
-def run_task():
-    asyncio.get_event_loop().run_until_complete(get_pending_tasks())
-
-
-@celery.task
-def stop_task():
-    asyncio.get_event_loop().run_until_complete(get_pending_tasks())
+# @celery.task
+# def run_task():
+#     asyncio.get_event_loop().run_until_complete(get_pending_tasks())
+#
+#
+# @celery.task
+# def stop_task():
+#     asyncio.get_event_loop().run_until_complete(get_pending_tasks())
 
 
 @celery.task

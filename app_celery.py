@@ -1,7 +1,6 @@
 import os
 
 from celery import Celery
-from celery.schedules import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,15 +27,15 @@ def create_app():
 celery = create_app()
 celery.conf.update(
     CELERYBEAT_SCHEDULE={
-        'run-every-5-seconds-for-run': {
-            'task': 'tasks.morning.run_task',
-            'schedule': timedelta(seconds=5),
-            'args': []
-        },
-        'run-every-5-seconds-for-stop': {
-            'task': 'tasks.morning.stop_task',
-            'schedule': timedelta(seconds=5),
-            'args': []
-        },
+        # 'run-every-5-seconds-for-run': {
+        #     'task': 'tasks.morning.run_task',
+        #     'schedule': timedelta(seconds=5),
+        #     'args': []
+        # },
+        # 'run-every-5-seconds-for-stop': {
+        #     'task': 'tasks.morning.stop_task',
+        #     'schedule': timedelta(seconds=5),
+        #     'args': []
+        # },
     },
 )
