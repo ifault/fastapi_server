@@ -6,7 +6,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from common.service import create_access_token
 from models.db import User, Task
 from models.model import LoginData, JsonResponseModel
-from tasks.morning import one, monitor
+from tasks.morning import one, monitor, send_email as se
+
 router = APIRouter()
 auth = HTTPBearer()
 
@@ -44,3 +45,8 @@ async def start(task_id: int):
         await task.save()
     return JsonResponseModel(success=True, message="创建成功", data={})
 
+
+@router.post("/send_email")
+async def send_email():
+    se.delay()
+    return JsonResponseModel(success=True, message="发送成功", data={})

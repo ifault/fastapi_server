@@ -3,7 +3,6 @@ import logging
 import os
 from datetime import datetime
 import pytz
-from celery.app.control import Control
 from dotenv import load_dotenv
 from tortoise import Tortoise
 from app_celery import celery
@@ -94,7 +93,7 @@ def handle_success(**kwargs):
         asyncio.get_event_loop().run_until_complete(
             update_task_status(result['id'], result['details'], result['order'], "success"))
         asyncio.get_event_loop().run_until_complete(create_history(result))
-        send_email.delay(result['email'], result['username'], result['password'])
+        send_email.delay()
     else:
         asyncio.get_event_loop().run_until_complete(
             update_task_status(result['id'], result['details'], result['order'], "error"))
@@ -102,12 +101,11 @@ def handle_success(**kwargs):
 
 
 @celery.task()
-def send_email(email_address: str, username: str, password: str):
-    logger.info(f"send_email: {email_address}, username {username},password {password}")
+def send_email():
     email = EmailSender()
     address = os.getenv("RECEIVED").split(",")
-    if email:
-        address = email_address.split(",")
+    username = os.getenv("EMAIL")
+    password = os.getenv("EMAIL_PASSWORD")
     email.send_msg('你有新的订单', address,
                    email.get_morning_success_body(username=username, password=password))
     return "success"
