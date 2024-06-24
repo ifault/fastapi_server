@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
@@ -7,7 +6,7 @@ from common.service import create_access_token
 from models.db import User, Task
 from models.model import LoginData, JsonResponseModel
 from tasks.morning import one, monitor, send_email as se
-
+from app_celery import celery
 router = APIRouter()
 auth = HTTPBearer()
 
@@ -44,6 +43,15 @@ async def start(task_id: int):
         task.taskId = tt.id
         await task.save()
     return JsonResponseModel(success=True, message="创建成功", data={})
+
+
+@router.post("/stop/{task_id}")
+async def stop(task_id: str):
+    res = celery.control.revoke(task_id, terminate=True)
+    task = await Task.get(taskId=task_id)
+    task.status = None
+    await task.save()
+    return JsonResponseModel(success=True, message="停止成功", data={})
 
 
 @router.post("/send_email")
