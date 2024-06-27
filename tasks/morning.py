@@ -2,10 +2,14 @@ import asyncio
 import logging
 import os
 from datetime import datetime
+from time import sleep
+
 import pytz
+from celery import chain
 from dotenv import load_dotenv
 from tortoise import Tortoise
 from app_celery import celery
+from app_redis import init_redis_pool
 from common.email import EmailSender
 from celery.signals import task_success, worker_process_init, worker_process_shutdown
 from models.db import Task, History
@@ -99,7 +103,6 @@ def handle_success(**kwargs):
             update_task_status(result['id'], result['details'], result['order'], "error"))
 
 
-
 @celery.task()
 def send_email():
     email = EmailSender()
@@ -142,6 +145,47 @@ def get_link(order: str):
         headers=headers,
     )
     return response.json().get('data', "")
+
+
+def trace_progress(info):
+    async def _log():
+        redis = await init_redis_pool()
+        await redis.rpush("progress", f"{info}")
+
+    asyncio.get_event_loop().run_until_complete(_log())
+
+
+class DemoObject:
+    def __init__(self):
+        self.task1 = ""
+        self.task2 = ""
+        self.task3 = ""
+
+
+@celery.task
+def task1(task_id):
+    trace_progress(f"Task {task_id} started")
+    return "Task 1 completed"
+
+
+@celery.task
+def task2(task_id):
+    trace_progress(f"Task {task_id} started")
+    return "Task 2 completed"
+
+
+@celery.task
+def task3(task_id):
+    trace_progress(f"Task {task_id} started")
+    return "Task 3 completed"
+
+
+@celery.task(bind=True)
+def start_progress(self):
+    task_id = self.request.id
+    task_chain = chain(task1.si(task_id), task2.si(task_id), task3.si(task_id))
+    result = task_chain.apply_async()
+    return {"message": "Tasks started", "task_id": result.id}
 
 
 if __name__ == '__main__':

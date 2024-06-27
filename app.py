@@ -2,12 +2,14 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from tortoise import Tortoise
-
+from tasks.morning import start_progress
+from app_redis import init_redis_pool
 from routes import api
 from settings import TORTOISE_ORM
 from fastapi.middleware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +40,29 @@ app.add_middleware(
 )
 
 app.include_router(api.router, prefix="/api")
+
+
+@app.get("/redis")
+async def redis_test():
+    task = start_progress.delay()
+    return task.id
+
+
+@app.get("/sse")
+async def sse(req: Request):
+    redis = await init_redis_pool()
+    async def stream_generator():
+        while True:
+            if await req.is_disconnected():
+                print("is_disconnected")
+                await redis.delete("progress")
+                break
+            item = await redis.blpop("progress", timeout=0)
+            if item:
+                yield f"data: {item}\n\n"
+            # await asyncio.sleep(0.5)
+
+    return EventSourceResponse(stream_generator())
 
 
 if __name__ == "__main__":
