@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytz
 from celery import chain
@@ -32,6 +32,12 @@ def get_current_time():
     shanghai_tz = pytz.timezone('Asia/Shanghai')
     shanghai_now = datetime.now(shanghai_tz)
     return shanghai_now.strftime("%Y-%m-%d %H:%M:%S")
+
+def get_order_time():
+    shanghai_tz = pytz.timezone('Asia/Shanghai')
+    shanghai_now = datetime.now(shanghai_tz)
+    shanghai_now_plus_30_min = shanghai_now + timedelta(minutes=30)
+    return shanghai_now_plus_30_min.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def lock(key: str, expire: int = 60 * 30):
@@ -102,9 +108,11 @@ def monitor(account: dict, task_id: str, targetDay: str):
     except StopIteration:
         account['success'] = False
         account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
+        logger.info(f"StopIteration with {account['username']}")
     except Exception:
         account['success'] = False
         account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
+        logger.info(f"Exception with {account['username']}")
     return account
 
 
@@ -112,7 +120,7 @@ async def update_task_status(id: int, details: str, order: str, status: str):
     logger.info(f"update_task_status: {id}, {details}, {order}, {status}")
     order_time = None
     if status == "success":
-        order_time = get_current_time()
+        order_time = get_order_time()
 
     await Task.filter(id=id).update(status=status, details=details, orderTime=order_time, order=order)
 

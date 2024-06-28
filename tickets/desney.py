@@ -241,8 +241,10 @@ class Desney:
         self.add_message(f"目标日期绑定卡数量[{self.quantity}], 不可选数量[{len(not_eligible)}]")
         self.target_date_en = details.get("expireEndTime", "")
         self.target_date_cn = details.get("expireTime", "")
+        logger.info(f"走到了这里1")
         self.start_time = details.get("startDateTime", "")
         self.vids = [x['visualId'] for x in prepare_morning_cards]
+        logger.info(f"走到了这里2")
         return self
 
     def get_morning_price(self):
