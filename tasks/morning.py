@@ -1,18 +1,18 @@
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime
-from time import sleep
 
 import pytz
 from celery import chain
 from dotenv import load_dotenv
 from tortoise import Tortoise
 from app_celery import celery
-from app_redis import init_redis_pool
 from common.email import EmailSender
 from celery.signals import task_success, worker_process_init, worker_process_shutdown
 from models.db import Task, History
+from redis_client import get_redis_client
 from settings import TORTOISE_ORM
 from celery._state import _task_stack
 from tickets.desney import Desney
@@ -28,10 +28,40 @@ logger.addHandler(file_handler)
 logger.setLevel(logging.INFO)
 
 
-@celery.task
-def one(account: dict, day, count):
+def get_current_time():
+    shanghai_tz = pytz.timezone('Asia/Shanghai')
+    shanghai_now = datetime.now(shanghai_tz)
+    return shanghai_now.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def lock(key: str, expire: int = 60 * 30):
+    client = get_redis_client()
+    return client.set(key, 1, ex=expire, nx=True)
+
+
+def unlock(key: str):
+    client = get_redis_client()
+    client.delete(key)
+
+
+@celery.task(limit=60 * 60 * 2)
+def one(account: dict, day, count, task_id: str):
     logger.info("开始一日票抢票")
-    desney = Desney(account['username'], account['password'], day, count)
+    client = get_redis_client()
+
+    def trace_progress(info):
+        payload = {
+            "id": task_id,
+            "info": info
+        }
+        client.rpush("progress", json.dumps(payload))
+
+    desney = Desney(account['username'],
+                    account['password'],
+                    day,
+                    count,
+                    callback=trace_progress,
+                    )
     try:
         desney = desney.check_one_day().login().syn_token().get_one_day_mock().get_token().get_one_day_order().pay_transactiona()
         # desney = desney.check_one_day().login().syn_token().get_one_day_mock().get_token().get_one_day_order()
@@ -49,12 +79,20 @@ def one(account: dict, day, count):
     return account
 
 
-@celery.task
-def monitor(account: dict):
+@celery.task(limit=60 * 60 * 2)
+def monitor(account: dict, task_id: str, targetDay: str):
     logger.info("开始早享卡抢票")
-    desney = Desney(account['username'], account['password'])
+    client = get_redis_client()
+    def trace_progress(info):
+        payload = {
+            "id": task_id,
+            "info": info
+        }
+        client.rpush("progress", json.dumps(payload))
+
+    desney = Desney(account['username'], account['password'], callback=trace_progress, targetDay=targetDay)
     try:
-        desney = desney.login().syn_token().get_eligible().get_morning_price().pay_morning_order().pay_transactiona()
+        desney = desney.login().syn_token().get_eligible().check_morning_date().get_morning_price().pay_morning_order().pay_transactiona()
         # desney = desney.login().syn_token().get_eligible().get_morning_price()
         if desney.order:
             account['order'] = desney.order
@@ -63,10 +101,10 @@ def monitor(account: dict):
             account['success'] = False
     except StopIteration:
         account['success'] = False
-        account['details'] = ", ".join(desney.get_message())
+        account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
     except Exception:
         account['success'] = False
-        account['details'] = ", ".join(desney.get_message())
+        account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
     return account
 
 
@@ -74,9 +112,7 @@ async def update_task_status(id: int, details: str, order: str, status: str):
     logger.info(f"update_task_status: {id}, {details}, {order}, {status}")
     order_time = None
     if status == "success":
-        shanghai_tz = pytz.timezone('Asia/Shanghai')
-        shanghai_now = datetime.now(shanghai_tz)
-        order_time = shanghai_now.strftime("%Y-%m-%d %H:%M:%S")
+        order_time = get_current_time()
 
     await Task.filter(id=id).update(status=status, details=details, orderTime=order_time, order=order)
 
@@ -145,14 +181,6 @@ def get_link(order: str):
         headers=headers,
     )
     return response.json().get('data', "")
-
-
-def trace_progress(info):
-    async def _log():
-        redis = await init_redis_pool()
-        await redis.rpush("progress", f"{info}")
-
-    asyncio.get_event_loop().run_until_complete(_log())
 
 
 class DemoObject:

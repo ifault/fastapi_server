@@ -1,7 +1,7 @@
 from typing import Optional
 
 from pydantic import BaseModel
-
+import uuid
 
 class SocketResponseData(BaseModel):
     code: int
@@ -81,3 +81,7 @@ class PaidData(APIModel):
 class MonitorData(APIModel):
     uuid: str
     email: Optional[str]
+
+
+class StartTaskData(BaseModel):
+    id: str

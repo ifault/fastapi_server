@@ -38,16 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.include_router(api.router, prefix="/api")
-
-
-@app.get("/redis")
-async def redis_test():
-    task = start_progress.delay()
-    return task.id
-
-
 @app.get("/sse")
 async def sse(req: Request):
     redis = await init_redis_pool()
@@ -59,11 +49,13 @@ async def sse(req: Request):
                 break
             item = await redis.blpop("progress", timeout=0)
             if item:
-                yield f"data: {item}\n\n"
+                yield f"{item[1]}"
             # await asyncio.sleep(0.5)
 
     return EventSourceResponse(stream_generator())
 
+
+app.include_router(api.router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn

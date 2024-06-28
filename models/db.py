@@ -1,12 +1,9 @@
-import uuid
-
 from tortoise import fields
 from tortoise.models import Model
-import datetime
-
+import uuid
 
 class User(Model):
-    id = fields.IntField(pk=True)
+    id = fields.TextField(pk=True, default=str(uuid.uuid4))
     username = fields.TextField()
     password = fields.TextField()
 
@@ -26,19 +23,20 @@ class History(Model):
 
 
 class Task(Model):
-    id = fields.IntField(pk=True, generated=True)
+    id = fields.TextField(pk=True, default=str(uuid.uuid4))
     taskId = fields.TextField(null=True)
     username = fields.TextField(null=False)
     password = fields.TextField(null=False)
     category = fields.TextField(null=False)
     order = fields.TextField(null=True)
     cardNumber = fields.TextField(null=True)  # 假设 cardNumber 可以为 NULL
-    count = fields.IntField()
+    count = fields.IntField(null=True)
     targetDay = fields.TextField(null=True)  # 假设 targetDay 可以为 NULL
     status = fields.TextField(null=True)  # 假设 status 可以为 NULL
-    userId = fields.IntField(null=False)
+    userId = fields.TextField(null=False)
     details = fields.TextField(null=True)  # 假设 details 可以为 NULL
     orderTime = fields.TextField(null=True)  # 假设 orderTime 可以为 NULL
+    cardCount = fields.IntField(default=0)
 
     class Meta:
         table = 'Task'
