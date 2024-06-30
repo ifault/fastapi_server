@@ -27,7 +27,9 @@ class Desney:
     def __init__(self, username, password, one_day="", one_day_count=0,
                  debug=False,
                  callback=None,
-                 targetDay=None):
+                 targetDay=None,
+                 task_id=None):
+        self.task_id = task_id
         self.targetDay = targetDay
         self.callback = callback
         self.debug = debug
@@ -109,7 +111,7 @@ class Desney:
 
     def add_message(self, info: str):
         if self.callback:
-            self.callback(info)
+            self.callback(self.task_id, info)
         self.messages.append(info)
 
     def post(self, url, data, header=None, debug=False):
@@ -371,7 +373,9 @@ class Desney:
         logger.info(f"可购买日期{avalibles}")
         if self.one_day in avalibles:
             logger.info("预定日期有票,等待登录")
+            self.add_message("预定日期有票,等待登录")
             return self
+        self.add_message("不可购买，等待5秒")
         logger.info("不可购买，等待5秒")
         sleep(5)
         return self.check_one_day()

@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pytz
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from common.service import create_access_token
@@ -40,18 +41,26 @@ async def login(form: LoginData):
 @router.post("/start")
 async def start(data: StartTaskData):
     task = await Task.get(id=data.id)
-    task.status = "running"
     task.details = ""
-    await task.save()
     date = task.targetDay
     date = datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d") if date else None
     targetDay = convertDateToCn(task.targetDay)
     if task.category == "oneday":
-        tt = one.delay(task.to_dict(), date, task.count, task.id)
+        if data.schedule:
+            schedule_time = datetime.strptime(task.scheduleTime, "%Y-%m-%d %H:%M:%S")
+            schedule_time = pytz.timezone('Asia/Shanghai').localize(schedule_time).astimezone(pytz.utc)
+            tt = one.apply_async((task.to_dict(), date, task.count), eta=schedule_time)
+        else:
+            tt = one.delay(task.to_dict(), date, task.count)
         task.taskId = tt.id
         await task.save()
     elif task.category == "morning":
-        tt = monitor.delay(task.to_dict(), task.id, targetDay=targetDay)
+        if data.schedule:
+            schedule_time = datetime.strptime(task.scheduleTime, "%Y-%m-%d %H:%M:%S")
+            schedule_time = pytz.timezone('Asia/Shanghai').localize(schedule_time).astimezone(pytz.utc)
+            tt = monitor.apply_async((task.to_dict(), targetDay), eta=schedule_time)
+        else:
+            tt = monitor.delay(task.to_dict(), targetDay=targetDay)
         task.taskId = tt.id
         await task.save()
     return JsonResponseModel(success=True, message="创建成功", data={})
@@ -88,10 +97,13 @@ async def check(data: StartTaskData):
 
 @router.post("/stop/{task_id}")
 async def stop(task_id: str):
-    res = celery.control.revoke(task_id, terminate=True)
     task = await Task.get(taskId=task_id)
     task.status = "ready"
+    task.details = ""
+    task.scheduleTime = ""
+    task.taskId = ""
     await task.save()
+    celery.control.revoke(task_id, terminate=True)
     return JsonResponseModel(success=True, message="停止成功", data={})
 
 

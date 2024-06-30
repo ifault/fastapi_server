@@ -33,6 +33,7 @@ def get_current_time():
     shanghai_now = datetime.now(shanghai_tz)
     return shanghai_now.strftime("%Y-%m-%d %H:%M:%S")
 
+
 def get_order_time():
     shanghai_tz = pytz.timezone('Asia/Shanghai')
     shanghai_now = datetime.now(shanghai_tz)
@@ -40,66 +41,50 @@ def get_order_time():
     return shanghai_now_plus_30_min.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def lock(key: str, expire: int = 60 * 30):
+def trace_progress(task_id, info):
     client = get_redis_client()
-    return client.set(key, 1, ex=expire, nx=True)
-
-
-def unlock(key: str):
-    client = get_redis_client()
-    client.delete(key)
+    client.rpush(f"progress:{task_id}", info)
 
 
 @celery.task(limit=60 * 60 * 2)
-def one(account: dict, day, count, task_id: str):
+def one(account: dict, day, count):
     logger.info("开始一日票抢票")
-    client = get_redis_client()
-
-    def trace_progress(info):
-        payload = {
-            "id": task_id,
-            "info": info
-        }
-        client.rpush("progress", json.dumps(payload))
-
     desney = Desney(account['username'],
                     account['password'],
                     day,
                     count,
                     callback=trace_progress,
+                    task_id=account['id']
                     )
     try:
         desney = desney.check_one_day().login().syn_token().get_one_day_mock().get_token().get_one_day_order().pay_transactiona()
-        # desney = desney.check_one_day().login().syn_token().get_one_day_mock().get_token().get_one_day_order()
+        # desney = desney.check_one_day()
         if desney.order:
             account['order'] = desney.order
             account['success'] = True
         else:
             account['success'] = False
+            account['details'] = "未获取到订单信息，抢票失败"
+            trace_progress(account['id'], account['details'])
     except StopIteration:
         account['success'] = False
-        account['details'] = ", ".join(desney.get_message())
-    except Exception:
+        account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
+        trace_progress(account['details'])
+    except Exception as e:
         account['success'] = False
-        account['details'] = ", ".join(desney.get_message())
+        account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
+        trace_progress(account['details'])
     return account
 
 
 @celery.task(limit=60 * 60 * 2)
-def monitor(account: dict, task_id: str, targetDay: str):
+def monitor(account: dict, targetDay: str):
     logger.info("开始早享卡抢票")
-    client = get_redis_client()
-    def trace_progress(info):
-        payload = {
-            "id": task_id,
-            "info": info
-        }
-        client.rpush("progress", json.dumps(payload))
-
-    desney = Desney(account['username'], account['password'], callback=trace_progress, targetDay=targetDay)
+    desney = Desney(account['username'], account['password'], callback=trace_progress, targetDay=targetDay,
+                    task_id=account['id'])
     try:
         desney = desney.login().syn_token().get_eligible().check_morning_date().get_morning_price().pay_morning_order().pay_transactiona()
-        # desney = desney.login().syn_token().get_eligible().get_morning_price()
+        # desney = desney.login().syn_token().get_eligible().check_morning_date()
         if desney.order:
             account['order'] = desney.order
             account['success'] = True
@@ -108,21 +93,23 @@ def monitor(account: dict, task_id: str, targetDay: str):
     except StopIteration:
         account['success'] = False
         account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
-        logger.info(f"StopIteration with {account['username']}")
+        trace_progress(account["id"], account['details'])
     except Exception:
         account['success'] = False
         account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
-        logger.info(f"Exception with {account['username']}")
+        trace_progress(account["id"], account['details'])
     return account
 
 
-async def update_task_status(id: int, details: str, order: str, status: str):
+async def update_task_status(id: str, details: str, order: str, status: str):
     logger.info(f"update_task_status: {id}, {details}, {order}, {status}")
     order_time = None
     if status == "success":
         order_time = get_order_time()
-
-    await Task.filter(id=id).update(status=status, details=details, orderTime=order_time, order=order)
+    try:
+        await Task.filter(id=id).update(status=status, details=details, orderTime=order_time, order=order)
+    except Exception as e:
+        logger.error(f"update_task_status error: {e}")
 
 
 async def create_history(account: dict):
@@ -174,54 +161,6 @@ def on_worker_shutdown(*args, **kwargs):
     else:
         loop = asyncio.get_event_loop()
     loop.run_until_complete(Tortoise.close_connections())
-
-
-token = "YXBwX2lkPTIwMTkxMDI5Njg3MzE3NjcmYml6X2NvbnRlbnQ9JTdCJTIyb3V0X3RyYWRlX25vJTIyJTNBJTIyMjAyNDA1MjkwNTAxMDAwNjQ1ODUlMjIlMkMlMjJwcm9kdWN0X2NvZGUlMjIlM0ElMjJRVUlDS19NU0VDVVJJVFlfUEFZJTIyJTJDJTIydG90YWxfYW1vdW50JTIyJTNBJTIyNTk5LjAwJTIyJTJDJTIyc3ViamVjdCUyMiUzQSUyMiVFNCVCOCU4QSVFNiVCNSVCNyVFOCVCRiVBQSVFNSVBMyVBQiVFNSVCMCVCQyVFNSVCQSVBNiVFNSU4MSU4NyVFNSU4QyVCQSVFNCVCQSVBNyVFNSU5MyU4MSUyMiUyQyUyMnBhc3NiYWNrX3BhcmFtcyUyMiUzQSUyMjE2NzcyNjYxJTIyJTJDJTIydGltZW91dF9leHByZXNzJTIyJTNBJTIyMjltJTIyJTJDJTIyZXh0ZW5kX3BhcmFtcyUyMiUzQSU3QiUyMnN5c19zZXJ2aWNlX3Byb3ZpZGVyX2lkJTIyJTNBJTIyMjA4ODEyMTg1MDU0OTYzMCUyMiU3RCU3RCZjaGFyc2V0PXV0Zi04Jm1ldGhvZD1hbGlwYXkudHJhZGUuYXBwLnBheSZub3RpZnlfdXJsPWh0dHBzJTNBJTJGJTJGcHJvZC5vcmlnaW4tcG13LnNoYW5naGFpZGlzbmV5cmVzb3J0LmNvbSUyRmdsb2JhbC1wb29sLW92ZXJyaWRlLUIlMkZwYXltZW50LW1pZGRsZXdhcmUtc2VydmljZSUyRnRyYW5zYWN0aW9uJTJGYWxpcGF5JTJGY29uZmlybSUyRjE2NzcyNjYxJnNpZ249SDNSbE1ZeThTME5memYxUnBTJTJGVWJxa1dGN2RseThTTEFzd1E5VjZFeUZGZk9HeUVFNUxvM254cHoydHclMkZHNFNjVm1JZUVyRnRWMk5YeXhVeVY1M2hhRGVnTU5RbDNJYXZ4R3U4ZXdtcGo2ZnhuM1hDQlR6aGc4WlJTVGRHZDc1ckxwQVd0TDljMUQzWVN1WlFRM29IYm90S1RtMFkxR2pVaFp5WDhnVVpBSHdrRzBueSUyRkdyTkFLSDR3SlNCeTQlMkJKeEtmbjlVbHRncHRYenJjNUlYT0FORlV4cTd1bWJXNkZNNjkzSnBNZEhaMmF3eGdUckFra1Y5QWhKbWtwMjJSWnVSZmpOYUpTJTJCY1dIYVlOY1pTZnNLeTd2UDhsVFRwR0NNVTJXeEFCU3ZnOWNHdUhzS0RabDhSbjFndGZIUVQlMkZzcEZZNUtNRjBIbVBvWkhHZGtWdjRRJTNEJTNEJnNpZ25fdHlwZT1SU0EyJnRpbWVzdGFtcD0yMDI0LTA1LTI5KzIwJTNBNDklM0E0MSZ2ZXJzaW9uPTEuMA"
-
-
-def get_link(order: str):
-    headers = {
-        'User-Agent': 'Apifox/1.0.0 (https://apifox.com)',
-    }
-
-    response = requests.post(
-        f'http://localhost:8090/api/getPaymentLink?order={order}&base64=true',
-        headers=headers,
-    )
-    return response.json().get('data', "")
-
-
-class DemoObject:
-    def __init__(self):
-        self.task1 = ""
-        self.task2 = ""
-        self.task3 = ""
-
-
-@celery.task
-def task1(task_id):
-    trace_progress(f"Task {task_id} started")
-    return "Task 1 completed"
-
-
-@celery.task
-def task2(task_id):
-    trace_progress(f"Task {task_id} started")
-    return "Task 2 completed"
-
-
-@celery.task
-def task3(task_id):
-    trace_progress(f"Task {task_id} started")
-    return "Task 3 completed"
-
-
-@celery.task(bind=True)
-def start_progress(self):
-    task_id = self.request.id
-    task_chain = chain(task1.si(task_id), task2.si(task_id), task3.si(task_id))
-    result = task_chain.apply_async()
-    return {"message": "Tasks started", "task_id": result.id}
 
 
 if __name__ == '__main__':

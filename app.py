@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from tortoise import Tortoise
-from tasks.morning import start_progress
 from app_redis import init_redis_pool
 from routes import api
 from settings import TORTOISE_ORM
@@ -38,19 +37,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-@app.get("/sse")
-async def sse(req: Request):
+
+
+@app.get("/sse/{task_id}")
+async def sse(req: Request, task_id: str):
     redis = await init_redis_pool()
+
     async def stream_generator():
         while True:
             if await req.is_disconnected():
                 print("is_disconnected")
                 await redis.delete("progress")
                 break
-            item = await redis.blpop("progress", timeout=0)
+            item = await redis.blpop(f"progress:{task_id}", timeout=0)
             if item:
                 yield f"{item[1]}"
-            # await asyncio.sleep(0.5)
 
     return EventSourceResponse(stream_generator())
 

@@ -85,3 +85,4 @@ class MonitorData(APIModel):
 
 class StartTaskData(BaseModel):
     id: str
+    schedule: Optional[bool] = False

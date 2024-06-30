@@ -37,6 +37,7 @@ class Task(Model):
     details = fields.TextField(null=True)  # 假设 details 可以为 NULL
     orderTime = fields.TextField(null=True)  # 假设 orderTime 可以为 NULL
     cardCount = fields.IntField(default=0)
+    scheduleTime = fields.TextField(null=True)  #
 
     class Meta:
         table = 'Task'
