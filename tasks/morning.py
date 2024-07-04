@@ -69,11 +69,11 @@ def one(account: dict, day, count):
     except StopIteration:
         account['success'] = False
         account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
-        trace_progress(account['details'])
+        trace_progress(account['id'], account['details'])
     except Exception as e:
         account['success'] = False
         account['details'] = desney.messages[-1] if len(desney.messages) > 0 else ""
-        trace_progress(account['details'])
+        trace_progress(account['id'], account['details'])
     return account
 
 
